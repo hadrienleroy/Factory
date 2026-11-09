@@ -83,22 +83,47 @@ internal final class RecursiveLock: Locking {
 }
 
 /// Master variable spin lock
-internal let globalVariableLock = CrossPlatformLock()
+internal let globalVariableLock = CrossPlatformLock.make()
 
 #if os(macOS) || os(iOS) || os(watchOS)
 /// Custom lock using os_unfair_lock on Apple platforms.
+///
+/// The lock lives in the object's own allocation, after `locks`, through `ManagedBufferPointer`: one allocation,
+/// at an address that never moves. `withUnsafeMutablePointer(to: &storedVar)` would be a write access to the
+/// stored property, which two threads locking at once overlap, and gives no stable address.
 internal final class CrossPlatformLock: Locking, @unchecked Sendable {
 
-    internal var locks = 1
+    private typealias Buffer = ManagedBufferPointer<Int, os_unfair_lock>
 
-    private var _lock = os_unfair_lock()
+    /// A new lock, counted as taken once.
+    internal static func make() -> CrossPlatformLock {
+        let buffer = Buffer(bufferClass: CrossPlatformLock.self, minimumCapacity: 1) { _, _ in 1 }
+        buffer.withUnsafeMutablePointerToElements { $0.initialize(to: os_unfair_lock()) }
+        return unsafeDowncast(buffer.buffer, to: CrossPlatformLock.self)
+    }
+
+    deinit {
+        buffer.withUnsafeMutablePointers { header, lock in
+            lock.deinitialize(count: 1)
+            header.deinitialize(count: 1)
+        }
+    }
+
+    internal var locks: Int {
+        get { buffer.header }
+        set { buffer.withUnsafeMutablePointerToHeader { $0.pointee = newValue } }
+    }
 
     @inlinable @inline(__always) func lock() {
-        withUnsafeMutablePointer(to: &_lock) { os_unfair_lock_lock($0) }
+        buffer.withUnsafeMutablePointerToElements { os_unfair_lock_lock($0) }
     }
 
     @inlinable @inline(__always) func unlock() {
-        withUnsafeMutablePointer(to: &_lock) { os_unfair_lock_unlock($0) }
+        buffer.withUnsafeMutablePointerToElements { os_unfair_lock_unlock($0) }
+    }
+
+    @usableFromInline internal var buffer: ManagedBufferPointer<Int, os_unfair_lock> {
+        ManagedBufferPointer(unsafeBufferObject: self)
     }
 
 }
@@ -108,7 +133,12 @@ internal final class CrossPlatformLock: Locking, @unchecked Sendable {
 
     internal var locks = 1
 
-    init() {
+    /// A new lock, counted as taken once.
+    internal static func make() -> CrossPlatformLock {
+        CrossPlatformLock()
+    }
+
+    private init() {
         mutex = UnsafeMutablePointer<pthread_mutex_t>.allocate(capacity: 1)
         let attributes = UnsafeMutablePointer<pthread_mutexattr_t>.allocate(capacity: 1)
         pthread_mutexattr_init(attributes)

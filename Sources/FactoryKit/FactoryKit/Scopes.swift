@@ -112,7 +112,7 @@ public class Scope: @unchecked Sendable {
     }
 
     internal let scopeID: UUID = UUID()
-    internal let lock = CrossPlatformLock()
+    internal let lock = CrossPlatformLock.make()
 
 }
 
@@ -286,7 +286,7 @@ extension Scope {
                     keyLock.locks += 1
                     return keyLock
                 }
-                let newLock = CrossPlatformLock()
+                let newLock = CrossPlatformLock.make()
                 resolutionLocks[key] = newLock
                 return newLock
             }

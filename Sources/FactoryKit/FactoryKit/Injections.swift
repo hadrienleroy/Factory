@@ -113,7 +113,7 @@ extension Injected: @unchecked Sendable where T: Sendable {}
 @propertyWrapper public struct LazyInjected<T> {
 
     private final class Storage: @unchecked Sendable {
-        let lock = CrossPlatformLock()
+        let lock = CrossPlatformLock.make()
         var dependency: T?
         var initialized = false
     }
@@ -214,7 +214,7 @@ extension LazyInjected: @unchecked Sendable where T: Sendable {}
 @propertyWrapper public struct WeakLazyInjected<T> {
 
     private final class Storage: @unchecked Sendable {
-        let lock = CrossPlatformLock()
+        let lock = CrossPlatformLock.make()
         weak var dependency: AnyObject?
         var initialized = false
     }
